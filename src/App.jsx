@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import 'github-markdown-css';
 
 const API_URL = "https://flow-api.mira.network/v1/flows/flows/cosmic-labs/food-tracker";
-const API_VERSION = "1.0.1";
+const API_VERSION = "1.0.2";
 
 const App = () => {
   const [meals, setMeals] = useState([]);
@@ -62,10 +62,11 @@ const App = () => {
       let content = data.result.replace(/```markdown\n/, '').replace(/```$/, '');
 
       // Parse the nutrition values
-      const caloriesMatch = content.match(/Calories:\s*(\d+)/);
-      const proteinMatch = content.match(/Protein:\s*(\d+)\s*g/);
-      const carbsMatch = content.match(/Carbs:\s*(\d+)\s*g/);
-      const fatsMatch = content.match(/Fats:\s*(\d+)\s*g/);
+      const caloriesMatch = content.match(/Calories:\s*\*\*(\d+)\s*kcal\*\*/);
+      const proteinMatch = content.match(/Protein:\s*\*\*(\d+\.\d+|\d+)\s*g\*\*/);
+      const carbsMatch = content.match(/Carbs:\s*\*\*(\d+)\s*g\*\*/);
+      const fatsMatch = content.match(/Fats:\s*\*\*(\d+)\s*g\*\*/);
+
 
       const result = {
         calories: caloriesMatch ? parseInt(caloriesMatch[1]) : 0,
