@@ -24,8 +24,12 @@ import {
   YAxis, 
   Tooltip, 
   Legend, 
-  ResponsiveContainer 
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  Cell
 } from 'recharts';
+import { useProfile } from './hooks/useProfile';
 
 const API_URL = "https://flow-api.mira.network/v1/flows/flows/cosmic-labs/food-tracker";
 const API_VERSION = "1.0.2";
@@ -42,7 +46,16 @@ const App = () => {
   const [selectedDate, setSelectedDate] = useState([new Date(), new Date()]);
   const [granularity, setGranularity] = useState('day');
   const [showGraph, setShowGraph] = useState(false);
+  const [graphType, setGraphType] = useState('macros');
   const [dateRangeMeals, setDateRangeMeals] = useState([]);
+  const { profile, updateProfile } = useProfile();
+  const [targetCalories, setTargetCalories] = useState(profile?.target_calories || '');
+
+  useEffect(() => {
+    if (profile?.target_calories) {
+      setTargetCalories(profile.target_calories);
+    }
+  }, [profile]);
 
   useEffect(() => {
     // Get initial session
@@ -114,10 +127,14 @@ const App = () => {
         meal => meal.date === format(day, 'yyyy-MM-dd')
       );
       
+      const totalCalories = dayMeals.reduce((sum, meal) => sum + (meal.calories || 0), 0);
+      const netCalories = totalCalories - (profile?.target_calories || 0);
+      
       return {
         date: format(day, 'MMM d'),
         fullDate: day,
-        calories: dayMeals.reduce((sum, meal) => sum + (meal.calories || 0), 0),
+        calories: totalCalories,
+        netCalories: netCalories,
         protein: dayMeals.reduce((sum, meal) => sum + (meal.protein || 0), 0),
         carbs: dayMeals.reduce((sum, meal) => sum + (meal.carbs || 0), 0),
         fats: dayMeals.reduce((sum, meal) => sum + (meal.fats || 0), 0),
@@ -131,10 +148,12 @@ const App = () => {
     if (!dailyTotals.length) return [];
 
     const weeks = [];
-    let weekStartDate = startOfDay(selectedDate[0]); // Start from earliest date
+    let currentDate = startOfDay(selectedDate[1]);
 
-    while (weekStartDate <= selectedDate[1]) {
-      const weekEndDate = addDays(weekStartDate, 6);
+    while (currentDate >= selectedDate[0]) {
+      const weekStartDate = subDays(currentDate, 6);
+      const weekEndDate = currentDate;
+
       const weekDays = dailyTotals.filter(
         day => day.fullDate >= weekStartDate && day.fullDate <= weekEndDate
       );
@@ -142,26 +161,29 @@ const App = () => {
       if (weekDays.length > 0) {
         weeks.push({
           date: `${format(weekStartDate, 'MMM d')} - ${format(weekEndDate, 'MMM d')}`,
-          fullStartDate: weekStartDate, // Add this for sorting
+          fullStartDate: weekStartDate,
           calories: weekDays.reduce((sum, day) => sum + day.calories, 0),
+          netCalories: weekDays.reduce((sum, day) => sum + day.netCalories, 0),
           protein: weekDays.reduce((sum, day) => sum + day.protein, 0),
           carbs: weekDays.reduce((sum, day) => sum + day.carbs, 0),
           fats: weekDays.reduce((sum, day) => sum + day.fats, 0)
         });
       }
 
-      weekStartDate = addDays(weekEndDate, 1);
+      currentDate = subDays(weekStartDate, 1);
     }
 
-    return weeks;
+    return weeks.sort((a, b) => b.fullStartDate - a.fullStartDate);
   };
 
   const getTotalNutrition = () => {
-    return dateRangeMeals.reduce((total, meal) => ({
-      calories: (total.calories || 0) + (meal.calories || 0),
-      protein: (total.protein || 0) + (meal.protein || 0),
-      carbs: (total.carbs || 0) + (meal.carbs || 0),
-      fats: (total.fats || 0) + (meal.fats || 0),
+    const dailyTotals = getDailyTotals();
+    return dailyTotals.reduce((total, day) => ({
+      calories: (total.calories || 0) + day.calories,
+      netCalories: (total.netCalories || 0) + day.netCalories,
+      protein: (total.protein || 0) + day.protein,
+      carbs: (total.carbs || 0) + day.carbs,
+      fats: (total.fats || 0) + day.fats,
     }), {});
   };
 
@@ -293,6 +315,30 @@ const App = () => {
     fetchMeals();
   };
 
+  const updateCalorieTarget = async (e) => {
+    e.preventDefault();
+    await updateProfile({ target_calories: parseInt(targetCalories) });
+  };
+
+  const updateMealMacros = async (mealId, field, value) => {
+    const updates = {
+      [field]: parseInt(value) || 0
+    };
+
+    const { error } = await supabase
+      .from('meals')
+      .update(updates)
+      .eq('id', mealId);
+
+    if (error) {
+      console.error('Error updating meal:', error);
+      return;
+    }
+
+    // Refresh meals after update
+    fetchMeals();
+  };
+
   if (!session) {
     return <Auth />;
   }
@@ -300,16 +346,47 @@ const App = () => {
   const totals = getTotalNutrition();
 
   return (
-    <div className="min-h-screen bg-black text-white overflow-hidden">
-      <div className="h-screen flex flex-col">
-        {/* Fixed Header */}
-        <div className="bg-black border-b border-gray-800 p-4">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex justify-between items-center mb-8">
-              <h1 className="text-4xl font-bold">Nutrition Tracker</h1>
-              <button onClick={() => supabase.auth.signOut()}>Sign Out</button>
+    <div className="bg-black text-white">
+      <header className="bg-black border-b border-gray-800 p-4">
+        <div className="max-w-4xl mx-auto w-full">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8">
+            <h1 className="text-3xl sm:text-4xl font-bold">Anabolic Macro Tracker</h1>
+            <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
+              <div className="relative group flex-1 sm:flex-initial">
+                <button 
+                  className="w-full sm:w-auto border border-gray-800 px-3 py-2 hover:bg-gray-900 transition-colors text-sm flex items-center gap-2"
+                >
+                  Target: {profile?.target_calories || 'Not set'} cal
+                </button>
+                <div className="absolute right-0 top-full mt-1 bg-black border border-gray-800 p-4 rounded shadow-lg hidden group-hover:block w-full sm:w-64 z-50">
+                  <h3 className="text-sm text-gray-500 mb-3">Set Calorie Target</h3>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={targetCalories}
+                      onChange={(e) => setTargetCalories(e.target.value)}
+                      placeholder="Enter target"
+                      className="bg-black border border-gray-800 px-3 py-2 text-white w-full"
+                    />
+                    <button
+                      onClick={updateCalorieTarget}
+                      className="border border-gray-800 px-3 py-2 hover:bg-gray-900 transition-colors"
+                    >
+                      Set
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={() => supabase.auth.signOut()}
+                className="border border-gray-800 px-3 py-2 hover:bg-gray-900 transition-colors text-sm whitespace-nowrap"
+              >
+                Sign Out
+              </button>
             </div>
+          </div>
 
+          <div className="mb-6">
             <DateControls
               selectedDate={selectedDate}
               setSelectedDate={setSelectedDate}
@@ -318,225 +395,356 @@ const App = () => {
               showGraph={showGraph}
               setShowGraph={setShowGraph}
             />
+          </div>
 
-            <div className="grid grid-cols-4 gap-8 mb-8">
-              <div>
-                <p className="text-xs uppercase tracking-wider text-gray-500">Calories</p>
-                <p className="text-2xl font-light mt-1">{totals.calories || 0}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wider text-gray-500">Protein</p>
-                <p className="text-2xl font-light mt-1">{totals.protein || 0}g</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wider text-gray-500">Carbs</p>
-                <p className="text-2xl font-light mt-1">{totals.carbs || 0}g</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wider text-gray-500">Fats</p>
-                <p className="text-2xl font-light mt-1">{totals.fats || 0}g</p>
-              </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            <div className="p-2 sm:p-0">
+              <p className="text-xs uppercase tracking-wider text-gray-500">Calories</p>
+              <p className="text-xl sm:text-2xl font-light mt-1">{totals.calories || 0}</p>
+              <p className={`text-xs sm:text-sm mt-1 ${totals.netCalories > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {totals.netCalories > 0 ? '+' : ''}{totals.netCalories || 0} net
+              </p>
             </div>
+            <div className="p-2 sm:p-0">
+              <p className="text-xs uppercase tracking-wider text-gray-500">Protein</p>
+              <p className="text-xl sm:text-2xl font-light mt-1">{totals.protein || 0}g</p>
+            </div>
+            <div className="p-2 sm:p-0">
+              <p className="text-xs uppercase tracking-wider text-gray-500">Carbs</p>
+              <p className="text-xl sm:text-2xl font-light mt-1">{totals.carbs || 0}g</p>
+            </div>
+            <div className="p-2 sm:p-0">
+              <p className="text-xs uppercase tracking-wider text-gray-500">Fats</p>
+              <p className="text-xl sm:text-2xl font-light mt-1">{totals.fats || 0}g</p>
+            </div>
+          </div>
 
-            {showGraph && (
-              <div className="h-64 mb-8">
+          {showGraph && (
+            <div>
+              <div className="grid grid-cols-2 sm:flex sm:inline-flex mb-4">
+                <button
+                  onClick={() => setGraphType('macros')}
+                  className={`px-3 py-2 text-sm border ${
+                    graphType === 'macros' 
+                      ? 'border-white text-white' 
+                      : 'border-gray-800 text-gray-500'
+                  }`}
+                >
+                  Overall Graph
+                </button>
+                <button
+                  onClick={() => setGraphType('net')}
+                  className={`px-3 py-2 text-sm border ${
+                    graphType === 'net' 
+                      ? 'border-white text-white' 
+                      : 'border-gray-800 text-gray-500'
+                  }`}
+                >
+                  Net Calories
+                </button>
+              </div>
+
+              <div className="h-[300px] sm:h-[400px] mb-8 -mx-4 sm:mx-0 overflow-x-auto">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart 
-                    data={granularity === 'day' ? 
-                      getDailyTotals().sort((a, b) => a.fullDate - b.fullDate) : 
-                      getWeeklyTotals().sort((a, b) => a.fullStartDate - b.fullStartDate)}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <XAxis 
-                      dataKey="date"
-                      interval={0}
-                      angle={-45}
-                      textAnchor="end"
-                      height={50}
-                    />
-                    {/* Left Y-axis for Calories */}
-                    <YAxis 
-                      yAxisId="calories"
-                      orientation="left"
-                      stroke="#8884d8"
-                      label={{ 
-                        value: 'Calories', 
-                        angle: -90, 
-                        position: 'insideLeft',
-                        style: { fill: '#8884d8' }
-                      }}
-                    />
-                    {/* Right Y-axis for Macros */}
-                    <YAxis 
-                      yAxisId="macros"
-                      orientation="right"
-                      stroke="#82ca9d"
-                      label={{ 
-                        value: 'Macros (g)', 
-                        angle: 90, 
-                        position: 'insideRight',
-                        style: { fill: '#82ca9d' }
-                      }}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#000',
-                        border: '1px solid #333'
-                      }}
-                    />
-                    <Legend />
-                    {/* Calories line using left axis */}
-                    <Line 
-                      yAxisId="calories"
-                      type="monotone" 
-                      dataKey="calories" 
-                      stroke="#8884d8" 
-                      dot={true}
-                      name="Calories"
-                    />
-                    {/* Macro lines using right axis */}
-                    <Line 
-                      yAxisId="macros"
-                      type="monotone" 
-                      dataKey="protein" 
-                      stroke="#82ca9d" 
-                      dot={true}
-                      name="Protein (g)"
-                    />
-                    <Line 
-                      yAxisId="macros"
-                      type="monotone" 
-                      dataKey="carbs" 
-                      stroke="#ffc658" 
-                      dot={true}
-                      name="Carbs (g)"
-                    />
-                    <Line 
-                      yAxisId="macros"
-                      type="monotone" 
-                      dataKey="fats" 
-                      stroke="#ff7300" 
-                      dot={true}
-                      name="Fats (g)"
-                    />
-                  </LineChart>
+                  {graphType === 'macros' ? (
+                    <LineChart 
+                      data={granularity === 'day' ? 
+                        getDailyTotals().sort((a, b) => a.fullDate - b.fullDate) : 
+                        getWeeklyTotals().sort((a, b) => a.fullStartDate - b.fullStartDate)}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 65 }}
+                    >
+                      <XAxis
+                        dataKey="date"
+                        interval="preserveStartEnd"
+                        angle={-45}
+                        textAnchor="end"
+                        height={70}
+                        tick={{ fontSize: 12 }}
+                        tickMargin={25}
+                      />
+                      <YAxis 
+                        yAxisId="calories"
+                        orientation="left"
+                        stroke="#8884d8"
+                        label={{ 
+                          value: 'Calories', 
+                          angle: -90, 
+                          position: 'insideLeft',
+                          style: { fill: '#8884d8' }
+                        }}
+                      />
+                      <YAxis 
+                        yAxisId="macros"
+                        orientation="right"
+                        stroke="#82ca9d"
+                        label={{ 
+                          value: 'Macros (g)', 
+                          angle: 90, 
+                          position: 'insideRight',
+                          style: { fill: '#82ca9d' }
+                        }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#000',
+                          border: '1px solid #333',
+                          borderRadius: '4px',
+                          padding: '8px',
+                          fontSize: '12px'
+                        }}
+                      />
+                      <Legend />
+                      <Line 
+                        yAxisId="calories"
+                        type="monotone" 
+                        dataKey="calories" 
+                        stroke="#8884d8" 
+                        dot={true}
+                        name="Calories"
+                      />
+                      <Line 
+                        yAxisId="macros"
+                        type="monotone" 
+                        dataKey="protein" 
+                        stroke="#82ca9d" 
+                        dot={true}
+                        name="Protein (g)"
+                      />
+                      <Line 
+                        yAxisId="macros"
+                        type="monotone" 
+                        dataKey="carbs" 
+                        stroke="#ffc658" 
+                        dot={true}
+                        name="Carbs (g)"
+                      />
+                      <Line 
+                        yAxisId="macros"
+                        type="monotone" 
+                        dataKey="fats" 
+                        stroke="#ff7300" 
+                        dot={true}
+                        name="Fats (g)"
+                      />
+                    </LineChart>
+                  ) : (
+                    <BarChart
+                      data={granularity === 'day' ? 
+                        getDailyTotals().sort((a, b) => a.fullDate - b.fullDate) : 
+                        getWeeklyTotals().sort((a, b) => a.fullStartDate - b.fullStartDate)}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 65 }}
+                    >
+                      <XAxis
+                        dataKey="date"
+                        interval="preserveStartEnd"
+                        angle={-45}
+                        textAnchor="end"
+                        height={70}
+                        tick={{ fontSize: 12 }}
+                        tickMargin={25}
+                      />
+                      <YAxis
+                        label={{ 
+                          value: 'Net Calories', 
+                          angle: -90, 
+                          position: 'insideLeft'
+                        }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#000',
+                          border: '1px solid #333',
+                          borderRadius: '4px',
+                          padding: '8px',
+                          fontSize: '12px'
+                        }}
+                        formatter={(value) => [
+                          <span className={value > 0 ? 'text-green-500' : 'text-red-500'}>
+                            {value > 0 ? '+' : ''}{value} calories
+                          </span>,
+                          <span className="text-gray-400">
+                            {value > 0 ? 'Surplus' : 'Deficit'}
+                          </span>
+                        ]}
+                        labelStyle={{ color: '#9ca3af' }}
+                        separator=": "
+                        wrapperStyle={{ outline: 'none' }}
+                      />
+                      <Bar 
+                        dataKey="netCalories"
+                      >
+                        {(granularity === 'day' ? 
+                          getDailyTotals().sort((a, b) => a.fullDate - b.fullDate) : 
+                          getWeeklyTotals().sort((a, b) => a.fullStartDate - b.fullStartDate)
+                        ).map((entry, index) => (
+                          <Cell 
+                            key={`cell-${index}`}
+                            fill={entry.netCalories > 0 ? '#22c55e' : '#ef4444'}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  )}
                 </ResponsiveContainer>
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Only show Add Meal button for single day selection */}
-            {selectedDate[0] && selectedDate[1] && 
-             format(selectedDate[0], 'yyyy-MM-dd') === format(selectedDate[1], 'yyyy-MM-dd') && (
-              <button
-                onClick={openAddMeal}
-                className="border border-white px-6 py-3 flex items-center gap-2 hover:bg-white hover:text-black transition-colors"
-              >
-                <Plus size={20} /> Add Meal
-              </button>
-            )}
-          </div>
+          {selectedDate[0] && selectedDate[1] && 
+           format(selectedDate[0], 'yyyy-MM-dd') === format(selectedDate[1], 'yyyy-MM-dd') && (
+            <button
+              onClick={openAddMeal}
+              className="w-full sm:w-auto border border-white px-4 py-2 flex items-center justify-center gap-2 mb-6"
+            >
+              <Plus size={16} /> Add Meal
+            </button>
+          )}
         </div>
+      </header>
 
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto p-4 space-y-4">
-            {granularity === 'day' ? (
-              getDailyTotals()
-                .sort((a, b) => b.fullDate - a.fullDate) // Most recent first
-                .map(day => (
-                  <div key={day.date} className="border border-gray-800 p-4">
-                    <h3 className="text-lg font-light mb-2">{day.date}</h3>
-                    <div className="flex gap-8 mb-4">
-                      <div className="text-sm">
-                        <span className="text-white">{day.calories}</span>
-                        <span className="text-gray-500 ml-1">cal</span>
-                      </div>
-                      <div className="text-sm">
-                        <span className="text-white">{day.protein}</span>
-                        <span className="text-gray-500 ml-1">p</span>
-                      </div>
-                      <div className="text-sm">
-                        <span className="text-white">{day.carbs}</span>
-                        <span className="text-gray-500 ml-1">c</span>
-                      </div>
-                      <div className="text-sm">
-                        <span className="text-white">{day.fats}</span>
-                        <span className="text-gray-500 ml-1">f</span>
-                      </div>
-                    </div>
-                    {/* Only show meals list for single day selection */}
-                    {selectedDate[0] && selectedDate[1] && 
-                     format(selectedDate[0], 'yyyy-MM-dd') === format(selectedDate[1], 'yyyy-MM-dd') && 
-                     format(selectedDate[0], 'yyyy-MM-dd') === format(day.fullDate, 'yyyy-MM-dd') && (
-                      <div className="space-y-2 pl-4 border-l border-gray-800">
-                        {day.meals.map(meal => (
-                          <div key={meal.id} className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm font-medium">{meal.name}</p>
-                              <p className="text-xs text-gray-500">{meal.description}</p>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <div className="flex gap-3 text-xs">
-                                <span>{meal.calories} cal</span>
-                                <span>{meal.protein}p</span>
-                                <span>{meal.carbs}c</span>
-                                <span>{meal.fats}f</span>
-                              </div>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => openEditMeal(meal)}
-                                  className="p-1 text-gray-500 hover:text-white transition-colors"
-                                >
-                                  <Edit2 size={14} />
-                                </button>
-                                <button
-                                  onClick={() => deleteMeal(meal.id)}
-                                  className="p-1 text-gray-500 hover:text-white transition-colors"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))
-            ) : (
-              getWeeklyTotals().map(week => (
-                <div key={week.date} className="border border-gray-800 p-4">
-                  <h3 className="text-lg font-light mb-2">{week.date}</h3>
-                  <div className="flex gap-8">
+      <main className="p-4">
+        <div className="max-w-4xl mx-auto space-y-4">
+          {granularity === 'day' && !(selectedDate[0] && selectedDate[1] && 
+            format(selectedDate[0], 'yyyy-MM-dd') === format(selectedDate[1], 'yyyy-MM-dd')) ? (
+            getDailyTotals()
+              .sort((a, b) => b.fullDate - a.fullDate)
+              .map(day => (
+                <div key={day.date} className="border border-gray-800 p-2 sm:p-4">
+                  <h3 className="text-base sm:text-lg font-light mb-2">{day.date}</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-8 mb-4">
                     <div className="text-sm">
-                      <span className="text-white">{week.calories}</span>
+                      <span className="text-white">{day.calories}</span>
                       <span className="text-gray-500 ml-1">cal</span>
                     </div>
                     <div className="text-sm">
-                      <span className="text-white">{week.protein}</span>
+                      <span className={day.netCalories > 0 ? 'text-green-500' : 'text-red-500'}>
+                        {day.netCalories > 0 ? '+' : ''}{day.netCalories}
+                      </span>
+                      <span className="text-gray-500 ml-1">net</span>
+                    </div>
+                    <div className="text-sm">
+                      <span className="text-white">{day.protein}</span>
                       <span className="text-gray-500 ml-1">p</span>
                     </div>
                     <div className="text-sm">
-                      <span className="text-white">{week.carbs}</span>
+                      <span className="text-white">{day.carbs}</span>
                       <span className="text-gray-500 ml-1">c</span>
                     </div>
                     <div className="text-sm">
-                      <span className="text-white">{week.fats}</span>
+                      <span className="text-white">{day.fats}</span>
                       <span className="text-gray-500 ml-1">f</span>
                     </div>
                   </div>
                 </div>
               ))
-            )}
-          </div>
+          ) : granularity === 'week' ? (
+            getWeeklyTotals().map(week => (
+              <div key={week.date} className="border border-gray-800 p-4">
+                <h3 className="text-lg font-light mb-2">{week.date}</h3>
+                <div className="flex gap-8">
+                  <div className="text-sm">
+                    <span className="text-white">{week.calories}</span>
+                    <span className="text-gray-500 ml-1">cal</span>
+                  </div>
+                  <div className="text-sm">
+                    <span className={week.netCalories > 0 ? 'text-green-500' : 'text-red-500'}>
+                      {week.netCalories > 0 ? '+' : ''}{week.netCalories}
+                    </span>
+                    <span className="text-gray-500 ml-1">net</span>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-white">{week.protein}</span>
+                    <span className="text-gray-500 ml-1">p</span>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-white">{week.carbs}</span>
+                    <span className="text-gray-500 ml-1">c</span>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-white">{week.fats}</span>
+                    <span className="text-gray-500 ml-1">f</span>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="border border-gray-800 p-4">
+              <h3 className="text-lg font-light mb-4">{format(selectedDate[0], 'MMM d, yyyy')}</h3>
+              <div className="space-y-4">
+                {meals
+                  .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                  .map(meal => (
+                    <div key={meal.id} className="border border-gray-800 p-4 rounded">
+                      <div>
+                        <div className="flex justify-between items-center mb-3">
+                          <p className="text-sm font-medium">{meal.name}</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => openEditMeal(meal)}
+                              className="p-1 text-gray-500 hover:text-white transition-colors"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              onClick={() => deleteMeal(meal.id)}
+                              className="p-1 text-gray-500 hover:text-white transition-colors"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 mb-3">{meal.description}</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          <div>
+                            <label className="text-xs text-gray-500">Calories</label>
+                            <input
+                              type="number"
+                              value={meal.calories}
+                              onChange={(e) => updateMealMacros(meal.id, 'calories', e.target.value)}
+                              className="w-full bg-black border border-gray-800 p-2 text-white text-sm mt-1"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500">Protein (g)</label>
+                            <input
+                              type="number"
+                              value={meal.protein}
+                              onChange={(e) => updateMealMacros(meal.id, 'protein', e.target.value)}
+                              className="w-full bg-black border border-gray-800 p-2 text-white text-sm mt-1"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500">Carbs (g)</label>
+                            <input
+                              type="number"
+                              value={meal.carbs}
+                              onChange={(e) => updateMealMacros(meal.id, 'carbs', e.target.value)}
+                              className="w-full bg-black border border-gray-800 p-2 text-white text-sm mt-1"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500">Fats (g)</label>
+                            <input
+                              type="number"
+                              value={meal.fats}
+                              onChange={(e) => updateMealMacros(meal.id, 'fats', e.target.value)}
+                              className="w-full bg-black border border-gray-800 p-2 text-white text-sm mt-1"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      </main>
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center p-4 z-50">
           <div className="bg-black w-full max-w-2xl border border-gray-800 flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
             <div className="p-6 border-b border-gray-800">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-light">
@@ -551,8 +759,7 @@ const App = () => {
               </div>
             </div>
 
-            {/* Modal Content - Scrollable */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="overflow-y-auto p-6">
               <input
                 type="text"
                 value={mealName}

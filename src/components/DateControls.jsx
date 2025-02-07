@@ -32,26 +32,30 @@ const DateControls = ({
   };
 
   return (
-    <div className="flex items-center gap-4 mb-6">
+    <div className="flex flex-col sm:flex-row gap-4">
       <DatePicker
         selectsRange={true}
         startDate={startDate}
         endDate={endDate}
         onChange={handleDateChange}
-        className="bg-black text-white border border-gray-800 px-3 py-2 rounded"
+        className="w-full sm:w-auto bg-black text-white border border-gray-800 px-3 py-2"
         placeholderText="Select date range"
         dateFormat="MMM d, yyyy"
       />
 
-      <div className="flex border border-gray-800">
+      <div className="grid grid-cols-2 sm:flex sm:inline-flex">
         <button
-          className={`px-4 py-2 ${granularity === 'day' ? 'bg-white text-black' : 'text-white'}`}
+          className={`px-4 py-2 border ${
+            granularity === 'day' ? 'bg-white text-black' : 'text-white'
+          }`}
           onClick={() => setGranularity('day')}
         >
           Day
         </button>
         <button
-          className={`px-4 py-2 border-l border-gray-800 ${granularity === 'week' ? 'bg-white text-black' : 'text-white'}`}
+          className={`px-4 py-2 border ${
+            granularity === 'week' ? 'bg-white text-black' : 'text-white'
+          }`}
           onClick={() => setGranularity('week')}
         >
           Week
@@ -59,7 +63,9 @@ const DateControls = ({
       </div>
 
       <button
-        className={`px-4 py-2 border border-gray-800 ${showGraph ? 'bg-white text-black' : 'text-white'}`}
+        className={`px-4 py-2 border ${
+          showGraph ? 'bg-white text-black' : 'text-white'
+        }`}
         onClick={() => setShowGraph(!showGraph)}
       >
         {showGraph ? 'Hide Graph' : 'Show Graph'}
