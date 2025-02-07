@@ -31,8 +31,12 @@ import {
 } from 'recharts';
 import { useProfile } from './hooks/useProfile';
 
-const API_URL = "https://flow-api.mira.network/v1/flows/flows/cosmic-labs/food-tracker";
-const API_VERSION = "1.0.2";
+// API Configuration
+const config = {
+  API_URL: "https://flow-api.mira.network/v1/flows/flows/cosmic-labs/food-tracker",
+  API_VERSION: "1.0.2",
+  API_KEY: process.env.REACT_APP_MIRA_API_KEY
+};
 
 const App = () => {
   const [session, setSession] = useState(null);
@@ -190,21 +194,35 @@ const App = () => {
   const calculateMeal = async (mealText) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}?version=${API_VERSION}`, {
+      if (!config.API_KEY) {
+        console.error('API Key missing:', config.API_KEY);
+        throw new Error('API key is not configured');
+      }
+
+      const url = `${config.API_URL}?version=${config.API_VERSION}`;
+      const headers = {
+        'content-type': 'application/json',
+        'miraauthorization': config.API_KEY
+      };
+      const body = {
+        input: {
+          diet: mealText
+        }
+      };
+
+      console.log('Making API request to:', url);
+      const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'miraauthorization': process.env.REACT_APP_MIRA_API_KEY
-        },
-        body: JSON.stringify({
-          input: {
-            diet: mealText
-          }
-        })
+        headers,
+        body: JSON.stringify(body)
       });
 
       if (!response.ok) {
-        throw new Error('Failed to calculate meal nutrients');
+        const errorText = await response.text();
+        console.error('API Error Status:', response.status);
+        console.error('API Error Headers:', Object.fromEntries(response.headers));
+        console.error('API Error Body:', errorText);
+        throw new Error(`API Error: ${errorText}`);
       }
 
       const data = await response.json();
