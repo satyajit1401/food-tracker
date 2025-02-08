@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 const Auth = () => {
+  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -10,6 +11,7 @@ const Auth = () => {
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
 
     try {
       if (isSignUp) {
@@ -27,7 +29,8 @@ const Auth = () => {
         if (error) throw error;
       }
     } catch (error) {
-      alert(error.message);
+      console.error('Auth error:', error);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
@@ -40,6 +43,12 @@ const Auth = () => {
           Anabolic Macro Tracker
         </h1>
         
+        {error && (
+          <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 mb-4 text-sm">
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleAuth} className="space-y-4">
           <input
             type="email"

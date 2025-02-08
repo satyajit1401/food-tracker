@@ -39,6 +39,9 @@ const config = {
 };
 
 const App = () => {
+  console.log('Supabase URL:', process.env.REACT_APP_SUPABASE_URL);
+  console.log('Environment:', process.env.NODE_ENV);
+
   const [session, setSession] = useState(null);
   const [meals, setMeals] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -64,7 +67,10 @@ const App = () => {
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Session loaded:', session);
       setSession(session);
+    }).catch(error => {
+      console.error('Supabase init error:', error);
     });
 
     // Listen for auth changes
