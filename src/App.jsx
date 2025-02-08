@@ -364,7 +364,7 @@ const App = () => {
   const totals = getTotalNutrition();
 
   return (
-    <div className="bg-black text-white">
+    <div className="min-h-screen bg-black text-white">
       <header className="bg-black border-b border-gray-800 p-4">
         <div className="max-w-4xl mx-auto w-full">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8">
@@ -808,22 +808,22 @@ const App = () => {
                       remarkPlugins={[remarkGfm]}
                       components={{
                         table: ({node, ...props}) => (
-                          <table className="min-w-full border border-gray-700 mt-4" {...props} />
+                          <table className="min-w-full border-collapse border border-gray-600 mt-4 !bg-gray-900/50" {...props} />
                         ),
                         thead: ({node, ...props}) => (
-                          <thead className="bg-gray-900" {...props} />
+                          <thead className="!bg-gray-800/80" {...props} />
                         ),
                         tr: ({node, ...props}) => (
-                          <tr className="border-b border-gray-700" {...props} />
+                          <tr className="border-b border-gray-600 !bg-transparent" {...props} />
                         ),
                         th: ({node, ...props}) => (
-                          <th className="px-4 py-2 text-left text-gray-300 font-medium border-r border-gray-700" {...props} />
+                          <th className="px-4 py-2 text-left !text-white font-bold border border-gray-600 !bg-transparent" {...props} />
                         ),
                         td: ({node, ...props}) => (
-                          <td className="px-4 py-2 text-gray-300 border-r border-gray-700" {...props} />
+                          <td className="px-4 py-2 text-left !text-gray-200 border border-gray-600 !bg-transparent" {...props} />
                         )
                       }}
-                      className="text-gray-300"
+                      className="text-gray-300 [&_.markdown-body]:!bg-transparent"
                     >
                       {calculatedMeal.analysis}
                     </ReactMarkdown>

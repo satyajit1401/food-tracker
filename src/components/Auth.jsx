@@ -1,50 +1,82 @@
-import { Auth } from '@supabase/auth-ui-react'
-import { ThemeSupa } from '@supabase/auth-ui-shared'
-import { supabase } from '../lib/supabase'
+import React, { useState } from 'react';
+import { supabase } from '../lib/supabase';
 
-const AuthComponent = () => {
+const Auth = () => {
+  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (error) throw error;
+        alert('Check your email for the confirmation link!');
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+      }
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center">
-      <div className="w-full max-w-md p-8 border border-gray-800">
-        <h1 className="text-2xl font-bold mb-8 text-center">Nutrition Tracker</h1>
-        <Auth
-          supabaseClient={supabase}
-          appearance={{
-            theme: ThemeSupa,
-            style: {
-              input: {
-                background: 'white',
-                color: 'black',
-                borderRadius: '4px',
-                padding: '8px 12px',
-              },
-              button: {
-                background: 'white',
-                color: 'black',
-                border: '1px solid #e5e7eb',
-              },
-              label: {
-                color: 'white',
-              },
-              anchor: {
-                color: 'white',
-              }
-            },
-          }}
-          theme="dark"
-          localization={{
-            variables: {
-              sign_in: {
-                email_label: 'Email',
-                password_label: 'Password',
-              },
-            },
-          }}
-          providers={['google']}
-        />
+    <div className="min-h-screen bg-black flex items-center justify-center p-4">
+      <div className="max-w-sm w-full">
+        <h1 className="text-3xl font-bold text-white text-center mb-8">
+          Anabolic Macro Tracker
+        </h1>
+        
+        <form onSubmit={handleAuth} className="space-y-4">
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full bg-black border border-gray-800 p-3 text-white focus:border-gray-700 outline-none"
+            required
+          />
+          
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full bg-black border border-gray-800 p-3 text-white focus:border-gray-700 outline-none"
+            required
+          />
+          
+          <button
+            type="submit"
+            className="w-full border border-white px-4 py-2 text-white hover:bg-white hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading}
+          >
+            {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
+          </button>
+        </form>
+
+        <button
+          onClick={() => setIsSignUp(!isSignUp)}
+          className="w-full mt-4 text-sm text-gray-500 hover:text-white transition-colors"
+        >
+          {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+        </button>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default AuthComponent 
+export default Auth; 
