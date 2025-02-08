@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 export const useProfile = () => {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  console.log('useProfile hook initialized')
 
   useEffect(() => {
     fetchProfile()
@@ -11,35 +12,23 @@ export const useProfile = () => {
 
   const fetchProfile = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      const { data: { session } } = await supabase.auth.getSession()
+      console.log('Current session:', session)
 
-      // Get profile
-      let { data: profile, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single()
-
-      if (error && error.code !== 'PGRST116') {
-        throw error
-      }
-
-      // Create profile if it doesn't exist
-      if (!profile) {
-        const { data, error: insertError } = await supabase
+      if (session?.user?.id) {
+        const { data, error } = await supabase
           .from('profiles')
-          .insert([{ id: user.id, target_calories: null }])
-          .select()
+          .select('*')
+          .eq('id', session.user.id)
           .single()
 
-        if (insertError) throw insertError
-        profile = data
-      }
+        console.log('Profile data:', data, 'Error:', error)
 
-      setProfile(profile)
+        if (error) throw error
+        setProfile(data)
+      }
     } catch (error) {
-      console.error('Error:', error)
+      console.error('Error in useProfile:', error)
     } finally {
       setLoading(false)
     }
