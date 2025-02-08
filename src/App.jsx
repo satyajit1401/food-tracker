@@ -795,7 +795,7 @@ const App = () => {
               <textarea
                 value={mealText}
                 onChange={(e) => setMealText(e.target.value)}
-                placeholder="Describe your meal..."
+                placeholder="Describe your meal (e.g., 200g roasted chicken breast with 150g mashed potato and a bowl of low fat vanilla ice cream)"
                 className="w-full h-32 bg-black border border-gray-800 p-3 mb-4 text-white focus:border-gray-700 outline-none resize-none"
               />
               
