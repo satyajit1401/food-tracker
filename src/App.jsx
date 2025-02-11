@@ -201,26 +201,22 @@ const App = () => {
     setIsLoading(true);
     try {
       if (!config.API_KEY) {
-        console.error('API Key missing:', config.API_KEY);
         throw new Error('API key is not configured');
       }
 
-      const url = `${config.API_URL}?version=${config.API_VERSION}`;
-      const headers = {
-        'content-type': 'application/json',
-        'miraauthorization': config.API_KEY
-      };
-      const body = {
+      const formData = new FormData();
+      formData.append('data', JSON.stringify({
         input: {
           diet: mealText
         }
-      };
+      }));
 
-      console.log('Making API request to:', url);
-      const response = await fetch(url, {
+      const response = await fetch(`${config.API_URL}?version=${config.API_VERSION}`, {
         method: 'POST',
-        headers,
-        body: JSON.stringify(body)
+        headers: {
+          'miraauthorization': config.API_KEY
+        },
+        body: formData
       });
 
       if (!response.ok) {
